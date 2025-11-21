@@ -15,15 +15,18 @@ interface GameContextType {
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
 
-const GAME_DURATION = 60; // 60 seconds initial time
-const TIME_BONUS = 5; // 5 seconds bonus for correct answer
+// v2.0: Tiered timing system
+const EASY_TIME = 30;    // 30 seconds for easy questions
+const MEDIUM_TIME = 60;  // 60 seconds for medium questions
+const HARD_TIME = 999;   // Unlimited time for hard questions
+const TOTAL_QUESTIONS = 15;  // Total questions per game (5 easy + 5 medium + 5 hard)
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
     const [player, setPlayer] = useState<Player | null>(null);
     const [gameState, setGameState] = useState<GameState>({
         currentQuestionIndex: 0,
         score: 0,
-        timeLeft: GAME_DURATION,
+        timeLeft: EASY_TIME,
         isGameOver: false,
         isPlaying: false,
         answers: [],
@@ -31,12 +34,16 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
     const [filteredQuestions, setFilteredQuestions] = useState<Question[]>([]);
 
-    // Filter and shuffle questions based on difficulty when game starts
+    // v2.0: Select exactly 15 questions (5 easy, 5 medium, 5 hard)
     useEffect(() => {
         if (player) {
-            const filtered = allQuestions.filter((q) => q.difficulty === player.difficulty);
-            const shuffled = shuffleQuestions(filtered);
-            setFilteredQuestions(shuffled);
+            const easyQuestions = shuffleQuestions(allQuestions.filter((q) => q.difficulty === 1)).slice(0, 5);
+            const mediumQuestions = shuffleQuestions(allQuestions.filter((q) => q.difficulty === 1)).slice(5, 10);
+            const hardQuestions = shuffleQuestions(allQuestions.filter((q) => q.difficulty === 2)).slice(0, 5);
+
+            // Combine in order: Easy → Medium → Hard
+            const tieredQuestions = [...easyQuestions, ...mediumQuestions, ...hardQuestions];
+            setFilteredQuestions(tieredQuestions);
         }
     }, [player]);
 
@@ -45,7 +52,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         setGameState({
             currentQuestionIndex: 0,
             score: 0,
-            timeLeft: GAME_DURATION,
+            timeLeft: EASY_TIME, // Start with easy question timer
             isGameOver: false,
             isPlaying: true,
             answers: [],
@@ -64,27 +71,34 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
             const isCorrect = currentQuestion.correctAnswer === answerIndex;
 
             setGameState((prev) => {
-                const newScore = isCorrect ? prev.score + 10 : prev.score;
-                const newTime = isCorrect ? prev.timeLeft + TIME_BONUS : prev.timeLeft - 2;
+                // v2.0: Difficulty-based scoring (Easy: +10, Medium: +20, Hard: +30)
+                const questionTier = Math.floor(prev.currentQuestionIndex / 5); // 0=Easy, 1=Medium, 2=Hard
+                const pointsForCorrect = (questionTier + 1) * 10;
+                const newScore = isCorrect ? prev.score + pointsForCorrect : prev.score;
 
                 const nextIndex = prev.currentQuestionIndex + 1;
-                const isFinished = nextIndex >= filteredQuestions.length;
+                const isFinished = nextIndex >= TOTAL_QUESTIONS;
 
                 if (isFinished) {
                     return {
                         ...prev,
                         score: newScore,
-                        timeLeft: newTime,
                         answers: [...prev.answers, answerIndex],
                         isPlaying: false,
                         isGameOver: true,
                     };
                 }
 
+                // v2.0: Set new timer based on next question tier
+                let newTimeLeft = EASY_TIME; // Default to easy
+                const nextTier = Math.floor(nextIndex / 5);
+                if (nextTier === 1) newTimeLeft = MEDIUM_TIME;
+                else if (nextTier === 2) newTimeLeft = HARD_TIME;
+
                 return {
                     ...prev,
                     score: newScore,
-                    timeLeft: newTime,
+                    timeLeft: newTimeLeft,
                     answers: [...prev.answers, answerIndex],
                     currentQuestionIndex: nextIndex,
                 };
@@ -116,7 +130,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         setGameState({
             currentQuestionIndex: 0,
             score: 0,
-            timeLeft: GAME_DURATION,
+            timeLeft: EASY_TIME,
             isGameOver: false,
             isPlaying: false,
             answers: [],

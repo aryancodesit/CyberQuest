@@ -13,7 +13,6 @@ interface LeaderboardEntry {
     username: string;
     score: number;
     date: string;
-    difficulty: number;
 }
 
 export default function LeaderboardPage() {
@@ -24,28 +23,33 @@ export default function LeaderboardPage() {
     const hasSaved = useRef(false);
 
     useEffect(() => {
-        const saveDataAndFetch = async () => {
+        const saveAndLoadScores = () => {
+            // v2.0: Load leaderboard from localStorage
+            const stored = localStorage.getItem("cyberquest_leaderboard");
+            let scores: LeaderboardEntry[] = stored ? JSON.parse(stored) : [];
+
+            // Save current score if exists
             if (player && gameState.score > 0 && !hasSaved.current) {
-                // Save score only once
                 hasSaved.current = true;
-                // For web version, we can just log it or use localStorage if needed
-                console.log("Score saved (local session):", {
+                const newEntry: LeaderboardEntry = {
                     username: player.username,
                     score: gameState.score,
-                    difficulty: player.difficulty,
-                });
+                    date: new Date().toISOString().split("T")[0],
+                };
+                scores.push(newEntry);
+
+                // Sort by score descending and keep top 10
+                scores = scores.sort((a, b) => b.score - a.score).slice(0, 10);
+
+                // Save back to localStorage
+                localStorage.setItem("cyberquest_leaderboard", JSON.stringify(scores));
             }
 
-            // Mock leaderboard for web version
-            setLeaderboard([
-                { username: "Neo", score: 2500, date: "2023-10-01", difficulty: 2 },
-                { username: "Trinity", score: 2450, date: "2023-10-02", difficulty: 2 },
-                { username: "Morpheus", score: 2300, date: "2023-10-03", difficulty: 1 },
-            ]);
+            setLeaderboard(scores);
             setLoading(false);
         };
 
-        saveDataAndFetch();
+        saveAndLoadScores();
     }, [player, gameState.score]);
 
     const handlePlayAgain = () => {
@@ -53,91 +57,120 @@ export default function LeaderboardPage() {
         router.push("/");
     };
 
+    const handleGoHome = () => {
+        resetGame();
+        router.push("/");
+    };
+
+    // Find current player's rank
+    const currentPlayerRank = player ? leaderboard.findIndex(
+        (entry) => entry.username === player.username && entry.score === gameState.score
+    ) + 1 : 0;
+
     return (
         <GameContainer>
             <div className="text-center mb-8">
                 <motion.div
                     initial={{ scale: 0, rotate: -180 }}
                     animate={{ scale: 1, rotate: 0 }}
-                    transition={{ type: "spring", duration: 1 }}
-                    className="inline-block p-6 rounded-full bg-yellow-500/20 border border-yellow-500/50 mb-4 shadow-[0_0_40px_rgba(234,179,8,0.3)]"
+                    transition={{ type: "spring", stiffness: 200 }}
+                    className="inline-block mb-4"
                 >
-                    <Trophy className="w-20 h-20 text-yellow-400" />
+                    <Trophy className="w-24 h-24 text-purple-400" />
                 </motion.div>
-                <h1 className="text-4xl font-bold text-white mb-2">Mission Complete</h1>
-                <p className="text-purple-200 text-xl">
-                    Agent <span className="font-bold text-white">{player?.username || "Unknown"}</span>
-                </p>
+                <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-4">
+                    Mission Complete!
+                </h1>
+                {player && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3 }}
+                        className="text-2xl text-purple-100 space-y-2"
+                    >
+                        <p>
+                            Agent <span className="font-bold text-purple-300">{player.username}</span>
+                        </p>
+                        <p className="text-4xl font-bold text-purple-400">{gameState.score} points</p>
+                        {currentPlayerRank > 0 && (
+                            <p className="text-sm text-purple-300">Rank #{currentPlayerRank} on the Leaderboard!</p>
+                        )}
+                    </motion.div>
+                )}
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2 max-w-4xl w-full">
-                <Card className="border-purple-500/30 bg-black/60 backdrop-blur-xl h-fit">
-                    <CardHeader>
-                        <CardTitle className="text-center text-2xl text-purple-100">Debriefing</CardTitle>
-                    </CardHeader>
-                    <CardContent className="text-center space-y-6">
-                        <div className="space-y-2">
-                            <p className="text-muted-foreground uppercase tracking-widest text-sm">Final Score</p>
-                            <div className="text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-purple-400">
-                                {gameState.score}
-                            </div>
-                        </div>
+            <Card className="border-purple-500/30 bg-black/60 backdrop-blur-xl mb-6">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-2xl">
+                        <Trophy className="w-6 h-6 text-yellow-400" />
+                        Top Defenders
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {loading ? (
+                        <p className="text-center text-purple-300">Loading...</p>
+                    ) : leaderboard.length === 0 ? (
+                        <p className="text-center text-purple-300">No scores yet. Be the first to play!</p>
+                    ) : (
+                        <div className="space-y-3">
+                            {leaderboard.map((entry, index) => {
+                                const isCurrentPlayer = player && entry.username === player.username && entry.score === gameState.score;
+                                const rankColors = [
+                                    "text-yellow-400 bg-yellow-500/10",
+                                    "text-gray-300 bg-gray-500/10",
+                                    "text-orange-400 bg-orange-500/10",
+                                ];
+                                const bgColor = isCurrentPlayer ? "bg-purple-500/20 border-purple-500/50" : "bg-slate-800/50";
 
-                        <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/10">
-                            <div>
-                                <p className="text-muted-foreground text-xs uppercase">Difficulty</p>
-                                <p className="font-bold text-lg">{player?.difficulty === 1 ? "Beginner" : "Advanced"}</p>
-                            </div>
-                            <div>
-                                <p className="text-muted-foreground text-xs uppercase">Status</p>
-                                <p className="font-bold text-lg text-green-400">Secure</p>
-                            </div>
-                        </div>
-
-                        <div className="flex flex-col gap-3 pt-4">
-                            <Button onClick={handlePlayAgain} variant="cyber" className="w-full">
-                                <RotateCcw className="w-4 h-4 mr-2" /> Re-Initialize
-                            </Button>
-                            <Button onClick={() => router.push("/")} variant="ghost" className="w-full">
-                                <Home className="w-4 h-4 mr-2" /> Return to Base
-                            </Button>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card className="border-purple-500/30 bg-black/60 backdrop-blur-xl">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-purple-100">
-                            <Trophy className="w-5 h-5 text-yellow-500" /> Top Agents
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {loading ? (
-                            <div className="text-center py-8 text-muted-foreground">Decrypting data...</div>
-                        ) : (
-                            <div className="space-y-4">
-                                {leaderboard.map((entry, i) => (
-                                    <div
-                                        key={i}
-                                        className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                                return (
+                                    <motion.div
+                                        key={index}
+                                        initial={{ opacity: 0, x: -20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: index * 0.1 }}
+                                        className={`flex items-center gap-4 p-4 rounded-lg border ${bgColor} ${isCurrentPlayer ? "border-2" : "border-purple-500/20"
+                                            }`}
                                     >
-                                        <div className="flex items-center gap-3">
-                                            <span className={`font-mono font-bold w-6 text-center ${i === 0 ? "text-yellow-400" : "text-muted-foreground"}`}>
-                                                #{i + 1}
-                                            </span>
-                                            <span className="font-medium text-white">{entry.username}</span>
+                                        <div
+                                            className={`w-10 h-10 flex items-center justify-center rounded-full font-bold text-lg ${index < 3 ? rankColors[index] : "text-purple-300 bg-slate-700"
+                                                }`}
+                                        >
+                                            #{index + 1}
                                         </div>
-                                        <span className="font-mono text-purple-400 font-bold">{entry.score}</span>
-                                    </div>
-                                ))}
+                                        <div className="flex-1">
+                                            <p className="font-bold text-purple-100 text-lg">
+                                                {entry.username}
+                                                {isCurrentPlayer && (
+                                                    <span className="ml-2 text-xs text-purple-400">(You)</span>
+                                                )}
+                                            </p>
+                                            <p className="text-sm text-purple-300">{entry.date}</p>
+                                        </div>
+                                        <div className="text-2xl font-bold text-purple-400">{entry.score}</div>
+                                    </motion.div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
 
-                                {leaderboard.length === 0 && (
-                                    <div className="text-center py-4 text-muted-foreground">No records found.</div>
-                                )}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+            <div className="flex gap-4 justify-center flex-wrap">
+                <Button
+                    onClick={handlePlayAgain}
+                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-8 py-3 text-lg"
+                >
+                    <RotateCcw className="w-5 h-5 mr-2" />
+                    Play Again
+                </Button>
+                <Button
+                    onClick={handleGoHome}
+                    variant="outline"
+                    className="border-purple-500/50 hover:bg-purple-900/30 text-purple-300 font-bold px-8 py-3 text-lg"
+                >
+                    <Home className="w-5 h-5 mr-2" />
+                    Home
+                </Button>
             </div>
         </GameContainer>
     );
